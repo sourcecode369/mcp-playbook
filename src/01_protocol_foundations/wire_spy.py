@@ -2,6 +2,23 @@
 """
 Transparent proxy that logs all MCP messages to a file.
 Use as a wrapper in Claude Desktop config instead of your server directly.
+
+Claude Desktop config (claude_desktop_config.json):
+{
+  "mcpServers": {
+    "hello-spied": {
+      "command": "/absolute/path/to/.venv/bin/python3",
+      "args": [
+        "/absolute/path/to/src/01_protocol_foundations/wire_spy.py",
+        "/absolute/path/to/.venv/bin/python3",
+        "/absolute/path/to/src/00_setup/hello_server.py"
+      ]
+    }
+  }
+}
+
+Watch the log:
+  tail -f /tmp/mcp_wire.log
 """
 import sys, json, threading, os
 
