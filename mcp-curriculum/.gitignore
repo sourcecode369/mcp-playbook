@@ -1,0 +1,41 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Data files (generated at runtime)
+*.db
+*.sqlite
+*.sqlite3
+*.jsonl
+~/mcp-notes/
+~/mcp-kb.json
+~/mcp-knowledge.db
+
+# Logs
+*.log
+/tmp/mcp_*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
