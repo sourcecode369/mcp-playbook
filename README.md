@@ -1,4 +1,4 @@
-# Model Context Protocol (MCP) — Complete Python Curriculum
+# Model Context Protocol (MCP) — Crash Course
 
 > Learn MCP inside out: protocol foundations, FastMCP, Claude Desktop & Claude API hosts, real projects, testing, and production deployment.
 
