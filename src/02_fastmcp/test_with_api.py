@@ -1,6 +1,5 @@
 import anthropic
 from dotenv import load_dotenv
-import subprocess, json, asyncio
 from pathlib import Path
 
 load_dotenv(Path(__file__).parent.parent / ".env", override=True)
@@ -44,7 +43,6 @@ def run_tool(name: str, args: dict) -> str:
 
 def chat_with_tools(user_message: str) -> str:
     messages = [{"role": "user", "content": user_message}]
-    
     while True:
         response = client.messages.create(
             model="claude-sonnet-4-6",
@@ -52,10 +50,8 @@ def chat_with_tools(user_message: str) -> str:
             tools=tools,
             messages=messages
         )
-        
         if response.stop_reason == "tool_use":
             messages.append({"role": "assistant", "content": response.content})
-            
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
@@ -70,7 +66,6 @@ def chat_with_tools(user_message: str) -> str:
             messages.append({"role": "user", "content": tool_results})
         else:
             return response.content[0].text
-        
 
 print(chat_with_tools("Add 98 and 221"))
 print(chat_with_tools("Greet Rohit formally"))
