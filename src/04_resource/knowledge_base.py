@@ -1,4 +1,4 @@
-from mcp import FastMCP
+from fastmcp import FastMCP
 import json
 from pathlib import Path
 from datetime import datetime
@@ -50,11 +50,11 @@ def add_entry(topic: str, title: str, content: str, tags: str= "") -> str:
     """
     
     db = load_db()
-    entry_id = next(db['next_id'])
+    entry_id = str(db['next_id'])
     db['entries'][entry_id] = {
         "topic": topic,
         "title": title,
-        "cotent": content,
+        "content": content,
         "tags": tags,
         "created": datetime.now().isoformat(),
         "updated": datetime.now().isoformat()
