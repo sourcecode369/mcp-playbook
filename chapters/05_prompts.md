@@ -6,7 +6,7 @@ Prompts are parameterized message templates stored on the server and surfaced as
 
 ## FastMCP Prompt Syntax
 
-```python
+````python
 from fastmcp import FastMCP
 
 mcp = FastMCP("prompts-demo")
@@ -25,7 +25,7 @@ Score quality 1-10 and summarize.
 ```{language}
 {code}
 ```"""
-```
+````
 
 FastMCP generates the `Prompt` schema from the function signature automatically. The return value becomes the prompt message sent to the LLM.
 
@@ -33,7 +33,7 @@ FastMCP generates the `Prompt` schema from the function signature automatically.
 
 Return a list of messages to pre-load conversation context:
 
-```python
+````python
 from fastmcp import FastMCP
 from mcp.types import PromptMessage, TextContent
 
@@ -50,13 +50,13 @@ def debug_session(error: str, language: str = "python") -> list[PromptMessage]:
         PromptMessage(role="user", content=TextContent(type="text",
             text="Please diagnose the root cause and provide a complete fix.")),
     ]
-```
+````
 
 ---
 
 ## Project 5: Developer Workflow Prompts
 
-```python
+````python
 # chapter05/dev_prompts.py
 from fastmcp import FastMCP
 
@@ -212,7 +212,7 @@ For each: rate 1-5 and explain. End with your top 3 recommendations."""
 
 if __name__ == "__main__":
     mcp.run()
-```
+````
 
 **Test in Claude Desktop:** Use the `/` slash command to access your prompts. They'll appear with their parameter fields.
 
