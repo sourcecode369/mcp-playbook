@@ -1,20 +1,70 @@
 # Chapter 6 — Transports
 
+## What is a Transport?
+
+A transport is the mechanism by which JSON-RPC messages travel between the client and the server. The MCP protocol defines what messages look like — transports define how they move.
+
+This separation is fundamental: **your server code doesn't change based on transport**. The same tools, resources, and prompts you define with FastMCP work identically over stdio, SSE, or HTTP. The only thing that changes is `mcp.run(transport=...)`.
+
 ## The Three Transports
 
-| Transport | Use Case | How it Works |
-|---|---|---|
-| **stdio** | Local processes | Client spawns server as subprocess, uses stdin/stdout |
-| **SSE** | Remote servers, web | Client subscribes to `/sse`, sends requests via POST |
-| **HTTP Streamable** | Modern remote servers | Single endpoint, bidirectional HTTP streaming |
+| Transport | Use Case | Direction | When to Use |
+|---|---|---|---|
+| **stdio** | Local processes | Bidirectional via stdin/stdout | Claude Desktop, CLI tools, local dev |
+| **SSE** | Remote servers | Client POSTs requests, server pushes via SSE stream | Browser clients, remote hosting |
+| **HTTP Streamable** | Modern remote servers | Single endpoint, bidirectional HTTP | New deployments, production servers |
 
-The MCP messages are identical regardless of transport. Only the delivery mechanism changes.
+## Why Three Transports Exist
+
+**stdio** came first. It's the simplest: two pipes, zero network. Works perfectly for local tools.
+
+**SSE** was added to allow remote servers. Server-Sent Events is a web standard for server-push — the client opens a long-lived GET connection and the server pushes data down it. The client sends requests via normal HTTP POSTs to a separate endpoint.
+
+**HTTP Streamable** is the newer standard. It consolidates SSE's two endpoints into one, uses proper HTTP streaming in both directions, and is what new remote servers should default to.
+
+## How stdio Works (Deep Dive)
+
+```
+Claude Desktop
+    │  spawns process: python server.py
+    │
+    ├── writes JSON to server's stdin  ──► your server reads it
+    │                                        your server processes it
+    └── reads JSON from server's stdout ◄── your server writes response
+```
+
+Claude Desktop treats your server like any other subprocess. stdin and stdout are the communication channel. This is why:
+- `print()` in your server breaks everything — it writes to stdout, which the client reads as JSON and fails to parse
+- You must use `sys.stderr` for any debug output
+- The server stays alive as a process as long as Claude Desktop is running
+
+## How SSE Works (Deep Dive)
+
+```
+Client                              Server
+  │── GET /sse ──────────────────►  │  (open long-lived connection)
+  │◄── data: {...} ─────────────────│  (server pushes responses here)
+  │── POST /messages ─────────────► │  (client sends requests here)
+  │◄── 202 Accepted ────────────────│
+```
+
+Two separate HTTP connections running simultaneously:
+1. A long-lived GET that stays open — server pushes responses down it
+2. Short-lived POSTs for each request — client sends a message, gets 202 back
+
+The actual response to a POST arrives asynchronously via the SSE stream, matched by request ID.
+
+## How HTTP Streamable Works (Deep Dive)
+
+```
+Client                              Server
+  │── POST /mcp ──────────────────► │
+  │◄── streaming response ──────────│  (server streams back responses)
+```
+
+One endpoint. The client POSTs a request, the server streams the response back. Cleaner than SSE but requires HTTP/1.1 chunked transfer or HTTP/2.
 
 ## stdio (Default)
-
-Your server process receives JSON-RPC on stdin and writes responses to stdout. Claude Desktop uses this for local servers.
-
-**Critical rule:** Never `print()` to stdout in a stdio server. It corrupts the protocol. Use `sys.stderr` for debug output.
 
 ```python
 # chapter06/stdio_server.py
@@ -224,3 +274,41 @@ if __name__ == "__main__":
 3. HTTP Streamable — `--transport http --port 8081`, same question
 
 Confirm identical responses across all three.
+
+---
+
+## When to Use Which Transport
+
+**Use stdio when:**
+- Running locally on the same machine as the client
+- Using Claude Desktop
+- Building CLI tools or scripts
+- During development and testing
+
+**Use SSE when:**
+- Deploying to a remote server
+- Supporting browser-based clients
+- Your infrastructure is already HTTP-based
+- You need backwards compatibility with older MCP clients
+
+**Use HTTP Streamable when:**
+- Building new remote deployments from scratch
+- You want the cleanest, most modern MCP setup
+- Your infrastructure supports HTTP/2
+
+**Rule of thumb:**
+- Local = stdio
+- Remote (new) = HTTP Streamable
+- Remote (legacy/compatibility) = SSE
+
+---
+
+## Common Mistakes
+
+| Mistake | Symptom | Fix |
+|---|---|---|
+| `print()` in stdio server | JSON parse error in client | Use `sys.stderr` |
+| Wrong port in config | Server not connecting | Match `--port` to config URL |
+| Running SSE server but using stdio config | Connection refused | Use `"url":` key not `"command":` in config |
+| Firewall blocking port | SSE/HTTP not reachable | Open port or use localhost |
+| Server not running when Claude Desktop connects | Failed status | Start server before restarting Desktop |
