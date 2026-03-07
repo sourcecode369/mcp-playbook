@@ -1,5 +1,29 @@
 # Chapter 7 — Notifications, Progress & Logging
 
+## What Are Notifications?
+
+So far every interaction has been request → response: the client asks, the server answers. But sometimes the server needs to send a message the client didn't ask for — that's a notification.
+
+Notifications are one-way messages with no response expected. The server fires them and moves on. They're used for:
+- **Logging**: telling the client what the server is doing internally
+- **Progress**: telling the client how far along a long-running task is
+- **Change events**: telling the client something changed (tool list, resource content, etc.)
+
+Notifications are JSON-RPC messages without an `id` field — that's what distinguishes them from requests.
+
+```json
+// This is a notification (no "id")
+{
+  "jsonrpc": "2.0",
+  "method": "notifications/message",
+  "params": {
+    "level": "info",
+    "data": "Processing started",
+    "logger": "my-tool"
+  }
+}
+```
+
 ## Notification Types
 
 | Notification | Direction | Purpose |
@@ -10,6 +34,45 @@
 | `notifications/resources/list_changed` | Server→Client | Resource list changed |
 | `notifications/resources/updated` | Server→Client | Specific resource was updated |
 | `notifications/cancelled` | Either | Request was cancelled |
+
+## Why This Matters
+
+Without notifications, a 30-second tool call is a black box — the client sees nothing until it completes. With notifications:
+- **Progress**: the user sees a progress bar or percentage
+- **Logging**: developers see what the server is doing in real time
+- **Debugging**: you can trace exactly what happened inside a tool
+
+Claude Desktop displays `notifications/message` logs in the chat UI. When your tool calls `ctx.info("Starting scan...")`, users see it appear as the tool runs.
+
+## How Context Works
+
+The `Context` object is FastMCP's way of giving your tool access to notification APIs. You don't construct it yourself — FastMCP injects it when it sees a `ctx: Context` parameter:
+
+```python
+from fastmcp.server.fastmcp import Context
+
+@mcp.tool()
+async def my_tool(input: str, ctx: Context) -> str:
+    # ctx is automatically injected by FastMCP
+    # You just declare it as a parameter
+    await ctx.info("Tool started")
+    ...
+```
+
+FastMCP looks at your function signature, sees `ctx: Context`, and injects the live request context. If you don't declare it, you don't get it. If you declare it, it's always there.
+
+## Log Levels
+
+```python
+await ctx.debug("Detailed diagnostic info — only useful during development")
+await ctx.info("Normal operational messages — what the tool is doing")
+await ctx.warning("Something unexpected but recoverable happened")
+await ctx.error("Something failed — the tool may still complete")
+```
+
+Level hierarchy: `debug` < `info` < `warning` < `error`
+
+Clients can filter by level. Claude Desktop shows all levels by default.
 
 ## MCP Logging
 
@@ -40,6 +103,36 @@ async def process_data(input: str, ctx: Context) -> str:
 The `Context` parameter is injected by FastMCP — just add it to your function signature. FastMCP detects it automatically.
 
 ## Progress Tokens
+
+### How Progress Works
+
+When a client wants progress updates, it sends a `progressToken` in the request's `_meta` field:
+
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "slow_tool",
+    "arguments": {},
+    "_meta": { "progressToken": "abc-123" }
+  }
+}
+```
+
+The server then sends `notifications/progress` messages using that token:
+
+```json
+{
+  "method": "notifications/progress",
+  "params": {
+    "progressToken": "abc-123",
+    "progress": 45,
+    "total": 100
+  }
+}
+```
+
+The client matches the `progressToken` to know which tool the progress belongs to. FastMCP handles all of this for you via `ctx.report_progress()`.
 
 For long-running tools, the client sends a `progressToken` and your server sends progress notifications back:
 
@@ -228,6 +321,34 @@ async def process_batch(
 if __name__ == "__main__":
     mcp.run()
 ```
+
+---
+
+## What You'll See in Claude Desktop
+
+When your tools send notifications, Claude Desktop shows them in real time:
+
+- **`ctx.info()`** — appears as a small status message below the tool call
+- **`ctx.warning()`** — appears highlighted in amber
+- **`ctx.error()`** — appears highlighted in red
+- **`ctx.report_progress()`** — appears as a progress bar (if the client supports it)
+
+This makes long-running tools feel responsive. Instead of the user staring at a spinner for 30 seconds, they see each step as it happens.
+
+---
+
+## When to Use Each
+
+| Scenario | Use |
+|---|---|
+| Tool starts, doing initial setup | `ctx.info()` |
+| Iterating over items (1 of 50...) | `ctx.report_progress()` + `ctx.debug()` |
+| Input looks suspicious but recoverable | `ctx.warning()` |
+| A sub-step failed but tool continues | `ctx.error()` |
+| Diagnostic details for debugging | `ctx.debug()` |
+| Tool completes successfully | `ctx.info()` with summary |
+
+---
 
 **Claude API test — capture log notifications:**
 ```python

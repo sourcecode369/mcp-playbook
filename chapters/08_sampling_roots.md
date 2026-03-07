@@ -2,14 +2,69 @@
 
 ## Sampling — Server-Initiated LLM Calls
 
-Sampling lets the **server** ask the **client's LLM** to generate a completion. The flow:
+Every chapter so far has followed one direction: the client (Claude) decides to call a tool, the server executes it, returns a result. Sampling flips this.
+
+Sampling lets the **server** ask the **client's LLM** to generate a completion mid-execution. The server sends a `sampling/createMessage` request, the client's LLM generates a response, and the result is returned to the server — all without the user seeing it happen.
 
 ```
-Normal:   Client(LLM) ──calls──► Server(tool)
-Sampling: Server ──sampling/createMessage──► Client ──► LLM ──► Server
+Normal flow:
+  User message → Claude → decides to call tool → server executes → result returned
+
+Sampling flow:
+  User message → Claude → calls tool → server runs → server asks LLM a question
+                                                              ↓
+                                                       LLM generates answer
+                                                              ↓
+                                                    server continues with that answer
+                                                              ↓
+                                                       result returned to Claude
 ```
 
-This enables agentic server-side behavior. A server can reason, summarize, classify, or make decisions using the LLM without the user needing to ask explicitly.
+This is what makes MCP servers genuinely intelligent — they're not just wrappers around functions. They can reason, evaluate, and make decisions using the same LLM the user is talking to.
+
+## Why Sampling Exists
+
+Without sampling, a server can only return raw data. With sampling, a server can return *intelligence*:
+
+| Without Sampling | With Sampling |
+|---|---|
+| Return 5000 chars of file content | Return a 3-sentence summary of the file |
+| Return raw JSON from an API | Return an interpretation of what the data means |
+| Return a list of search results | Return the most relevant result with an explanation |
+| Return a diff | Return what the change actually does |
+
+The server becomes an agent layer, not just a data layer.
+
+## How Sampling Works (Protocol Level)
+
+```
+Client (Claude Desktop)              Server (your FastMCP server)
+        │                                       │
+        │── tools/call ────────────────────────►│
+        │                                       │ (server starts executing)
+        │◄── sampling/createMessage ────────────│ (server asks LLM)
+        │ (Claude generates a completion)        │
+        │── sampling result ───────────────────►│ (server gets the answer)
+        │                                       │ (server continues)
+        │◄── tools/call result ─────────────────│ (final result to user)
+```
+
+The sampling request contains messages (what to ask), an optional system prompt, and token limits. The client uses its LLM to generate a completion and returns it synchronously.
+
+## Important: Client Must Support Sampling
+
+Sampling is a **capability** that must be declared during the `initialize` handshake:
+
+```json
+// Client declares it supports sampling
+{
+  "capabilities": {
+    "sampling": {}
+  }
+}
+```
+
+**Claude Desktop supports sampling.** If you use a custom client (Chapter 11), you must implement the `sampling/createMessage` handler yourself, otherwise `ctx.sample()` calls will fail.
 
 ## When to Use Sampling
 
@@ -17,6 +72,8 @@ This enables agentic server-side behavior. A server can reason, summarize, class
 - Classify or route user intent inside the server
 - Generate structured output from raw data
 - Make intelligent decisions inside a multi-step tool
+- Evaluate quality of data before returning it
+- Generate a natural language explanation of technical output
 
 ## Sampling with FastMCP
 
@@ -47,6 +104,30 @@ async def smart_summarize(path: str, max_words: int = 100, ctx: Context) -> str:
 ```
 
 ## Roots — Filesystem Boundaries
+
+### What Are Roots?
+
+Roots are a security mechanism. When a client connects to a server, it can declare which filesystem paths it's willing to let the server access. The server then calls `roots/list` to discover these declared boundaries and should respect them.
+
+```
+Client declares:  "You may access /home/user/project and /home/user/documents"
+Server asks:      roots/list
+Client responds:  [{uri: "file:///home/user/project", name: "My Project"},
+                   {uri: "file:///home/user/documents", name: "Documents"}]
+Server respects:  Only reads/writes within those paths
+```
+
+This is a **trust contract**, not enforced at the protocol level. The server voluntarily respects roots. It's your responsibility as the server author to check roots before accessing the filesystem.
+
+### Why Roots Exist
+
+Without roots, a server connected to Claude Desktop could theoretically access any file on your machine. Roots let the client say: *"I'm allowing you to connect, but only touch these specific directories."*
+
+In practice, Claude Desktop lets you configure roots per server in the config. A document editing server might be given `~/Documents` as its root. A coding server might be given `~/projects`.
+
+### Roots vs. Your Own Path Validation
+
+Roots are what the client tells you. You still need your own path validation (Chapter 13 — Security) to prevent path traversal attacks (`../../etc/passwd` style). Roots narrow the scope; your code enforces it.
 
 Roots are URI prefixes the client declares the server is allowed to access. The server calls `list_roots()` to discover them:
 
